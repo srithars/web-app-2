@@ -1,4 +1,3 @@
-```yaml
 name: Spring Boot CI/CD with Tomcat
 
 on:
@@ -15,9 +14,11 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      # Step 1: Get source code
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      # Step 2: Install Java 21
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -25,10 +26,23 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # Step 3: Build the application
       - name: Build Spring Boot WAR
         shell: powershell
-        run: mvn -B clean package -DskipTests
+        run: |
+          mvn -B clean package -DskipTests
 
+      # Step 4: Verify WAR file
+      - name: Check WAR File
+        shell: powershell
+        run: |
+          Get-ChildItem target
+
+          if (!(Test-Path "target/demo-0.0.1-SNAPSHOT.war")) {
+            throw "WAR file not found. Check pom.xml and target folder."
+          }
+
+      # Step 5: Deploy WAR to Tomcat
       - name: Deploy WAR to Tomcat
         shell: powershell
         env:
@@ -36,14 +50,20 @@ jobs:
           TOMCAT_PASS: ${{ secrets.TOMCAT_PASS }}
         run: |
           $pair = "$env:TOMCAT_USER`:$env:TOMCAT_PASS"
+
           $auth = [Convert]::ToBase64String(
             [Text.Encoding]::ASCII.GetBytes($pair)
           )
 
-          Invoke-WebRequest `
+          $headers = @{
+            Authorization = "Basic $auth"
+          }
+
+          $response = Invoke-WebRequest `
             -Uri "http://localhost:8081/manager/text/deploy?path=/webapp1&update=true" `
             -Method Put `
-            -Headers @{ Authorization = "Basic $auth" } `
+            -Headers $headers `
             -InFile "target/demo-0.0.1-SNAPSHOT.war" `
             -ContentType "application/octet-stream"
-```
+
+          Write-Host $response.Content
