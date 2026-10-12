@@ -1,0 +1,47 @@
+
+name: Spring Boot CI/CD app
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Build WAR
+        run: mvn clean package -DskipTests
+
+      - name: Deploy to Tomcat
+        shell: powershell
+        env:
+          TOMCAT_USER: ${{ secrets.TOMCAT_USER }}
+          TOMCAT_PASS: ${{ secrets.TOMCAT_PASS }}
+        run: |
+          $pair = "$env:TOMCAT_USER`:$env:TOMCAT_PASS"
+          $auth = [Convert]::ToBase64String(
+            [Text.Encoding]::ASCII.GetBytes($pair)
+          )
+
+          Invoke-WebRequest `
+            -Uri "http://localhost:8081/manager/text/deploy?path=/webapp2&update=true" `
+            -Method Put `
+            -Headers @{ Authorization = "Basic $auth" } `
+            -InFile "target/demo-0.0.1-SNAPSHOT.war" `
+            -ContentType "application/octet-stream"
